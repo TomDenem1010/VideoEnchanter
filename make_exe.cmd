@@ -1,0 +1,1 @@
+call pyinstaller src/videoEnchanter/Main.py

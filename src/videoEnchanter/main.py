@@ -1,4 +1,6 @@
-import logging;
+import logging
+from services.VideoProcessor import VideoProcessor
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -9,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    logger.info("Hello World")
+    video_path = input("Add meg a videó elérési útját: ").strip()
+
+    processor = VideoProcessor()
+    processor.process(video_path)
 
 
 if __name__ == "__main__":

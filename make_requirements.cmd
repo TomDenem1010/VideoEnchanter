@@ -1,0 +1,1 @@
+call pip install -r src/videoEnchanter/requirements.txt
