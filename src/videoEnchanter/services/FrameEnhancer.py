@@ -1,5 +1,4 @@
 import cv2
-import numpy as np
 
 
 class FrameEnhancer:
@@ -10,11 +9,34 @@ class FrameEnhancer:
             clipLimit=1.8,
             tileGridSize=(8, 8)
         )
-        self.sharpen_kernel = np.array([
-            [0, -1, 0],
-            [-1, 5, -1],
-            [0, -1, 0]
-        ])
+
+    def _resize_for_quality_denoise(self, frame):
+        height, width = frame.shape[:2]
+        scaled_width = max(640, width // 2)
+        scaled_height = max(360, height // 2)
+
+        if scaled_width >= width or scaled_height >= height:
+            return frame, None
+
+        denoise_size = (scaled_width, scaled_height)
+        resized = cv2.resize(frame, denoise_size, interpolation=cv2.INTER_AREA)
+        return resized, (width, height)
+
+    def _denoise_quality(self, frame):
+        resized_frame, original_size = self._resize_for_quality_denoise(frame)
+        denoised = cv2.fastNlMeansDenoisingColored(
+            resized_frame,
+            None,
+            3,
+            3,
+            7,
+            15
+        )
+
+        if original_size is None:
+            return denoised
+
+        return cv2.resize(denoised, original_size, interpolation=cv2.INTER_LINEAR)
 
     def _adjust_contrast(self, frame):
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
@@ -34,14 +56,7 @@ class FrameEnhancer:
 
     def _denoise(self, frame):
         if self.profile == "quality":
-            return cv2.fastNlMeansDenoisingColored(
-                frame,
-                None,
-                3,
-                3,
-                7,
-                15
-            )
+            return self._denoise_quality(frame)
 
         if self.profile == "balanced":
             return cv2.bilateralFilter(
