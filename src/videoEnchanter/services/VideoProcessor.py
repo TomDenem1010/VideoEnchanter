@@ -105,6 +105,8 @@ class VideoProcessor:
 
         current_frame = 0
         progress_interval = 250 if frame_count > 0 else 1
+        progress_log_interval_seconds = 5.0
+        last_progress_log_time = total_start_time
 
         while True:
             frame = read_queue.get()
@@ -122,17 +124,27 @@ class VideoProcessor:
             write_queue.put(enhanced_frame)
 
             current_frame += 1
+            now = time.perf_counter()
 
             if (
                 current_frame == 1
                 or current_frame == frame_count
                 or current_frame % progress_interval == 0
+                or now - last_progress_log_time >= progress_log_interval_seconds
             ):
-                logger.info(
-                    "Feldolgozott frame: %s/%s",
-                    current_frame,
-                    frame_count
+                elapsed_time = now - total_start_time
+                frames_per_second = (
+                    current_frame / elapsed_time
+                    if elapsed_time > 0 else 0.0
                 )
+                logger.info(
+                    "Feldolgozott frame: %s/%s (%.2f%%, %.2f frame/s)",
+                    current_frame,
+                    frame_count,
+                    (current_frame / frame_count) * 100 if frame_count > 0 else 0.0,
+                    frames_per_second
+                )
+                last_progress_log_time = now
 
         write_queue.put(SENTINEL)
         reader_thread.join()
