@@ -7,7 +7,7 @@ class FrameEnhancer:
     def __init__(self, profile: str = "fast"):
         self.profile = profile
         self.clahe = cv2.createCLAHE(
-            clipLimit=2.0,
+            clipLimit=1.8,
             tileGridSize=(8, 8)
         )
         self.sharpen_kernel = np.array([
@@ -16,39 +16,49 @@ class FrameEnhancer:
             [0, -1, 0]
         ])
 
+    def _adjust_contrast(self, frame):
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+        l_channel = self.clahe.apply(l_channel)
+        merged = cv2.merge((l_channel, a_channel, b_channel))
+        return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+
+    def _sharpen(self, frame):
+        return cv2.addWeighted(
+            frame,
+            1.12,
+            cv2.GaussianBlur(frame, (0, 0), 1.1),
+            -0.12,
+            0
+        )
+
     def _denoise(self, frame):
         if self.profile == "quality":
             return cv2.fastNlMeansDenoisingColored(
                 frame,
                 None,
-                5,
-                5,
+                3,
+                3,
                 7,
-                21
+                15
             )
 
         if self.profile == "balanced":
             return cv2.bilateralFilter(
                 frame,
-                7,
-                35,
-                35
+                5,
+                28,
+                28
             )
 
-        return cv2.GaussianBlur(frame, (3, 3), 0)
+        return cv2.bilateralFilter(
+            frame,
+            3,
+            18,
+            18
+        )
 
     def enhance(self, frame):
         denoised = self._denoise(frame)
-
-        # CLAHE kontrasztjavítás
-        lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-
-        cl = self.clahe.apply(l)
-
-        merged = cv2.merge((cl, a, b))
-        contrast = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
-
-        sharpened = cv2.filter2D(contrast, -1, self.sharpen_kernel)
-
-        return sharpened
+        contrast = self._adjust_contrast(denoised)
+        return self._sharpen(contrast)
