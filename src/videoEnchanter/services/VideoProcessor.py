@@ -1,7 +1,10 @@
 import logging
+import os
 import queue
 import threading
 import time
+from concurrent.futures import ProcessPoolExecutor
+
 import cv2
 
 from services.VideoReader import VideoReader
@@ -13,6 +16,18 @@ from utils.FileUtils import buildOutputPath
 logger = logging.getLogger(__name__)
 
 SENTINEL = object()
+ENHANCER = None
+
+
+def _init_enhancer_worker(profile):
+    global ENHANCER
+    ENHANCER = FrameEnhancer(profile)
+
+
+def _enhance_frame_worker(frame_index, frame):
+    start_time = time.perf_counter()
+    enhanced_frame = ENHANCER.enhance(frame)
+    return frame_index, enhanced_frame, time.perf_counter() - start_time
 
 
 class VideoProcessor:
@@ -20,12 +35,21 @@ class VideoProcessor:
     def __init__(
         self,
         queue_size: int = 8,
-        enhancement_profile: str = "fast"
+        enhancement_profile: str = "fast",
+        worker_count: int | None = None
     ):
         self.queue_size = queue_size
+        self.enhancement_profile = enhancement_profile
+        self.worker_count = worker_count or self._get_default_worker_count()
         self.video_reader = VideoReader()
         self.video_writer = VideoWriter()
-        self.frame_enhancer = FrameEnhancer(enhancement_profile)
+
+    def _get_default_worker_count(self):
+        cpu_count = os.cpu_count() or 1
+        return max(1, cpu_count - 1)
+
+    def _should_use_process_pool(self):
+        return self.enhancement_profile != "fast" and self.worker_count > 1
 
     def _read_frames(self, capture, read_queue, state):
         try:
@@ -97,12 +121,6 @@ class VideoProcessor:
 
         return reader_thread, writer_thread
 
-    def _enhance_frame(self, frame, state):
-        enhance_start_time = time.perf_counter()
-        enhanced_frame = self.frame_enhancer.enhance(frame)
-        state["enhance_time"] += time.perf_counter() - enhance_start_time
-        return enhanced_frame
-
     def _should_log_progress(self, current_frame, frame_count, now, last_log_time):
         return (
             current_frame == frame_count
@@ -138,6 +156,164 @@ class VideoProcessor:
         capture.release()
         writer.release()
 
+    def _create_enhancer_pool(self):
+        return ProcessPoolExecutor(
+            max_workers=self.worker_count,
+            initializer=_init_enhancer_worker,
+            initargs=(self.enhancement_profile,)
+        )
+
+    def _process_frames_single_worker(self, read_queue, write_queue, state, frame_count, total_start_time):
+        current_frame = 0
+        last_progress_log_time = total_start_time
+        enhancer = FrameEnhancer(self.enhancement_profile)
+
+        while True:
+            frame = read_queue.get()
+
+            if frame is SENTINEL:
+                break
+
+            self._validate_worker_state(state)
+            start_time = time.perf_counter()
+            enhanced_frame = enhancer.enhance(frame)
+            state["enhance_time"] += time.perf_counter() - start_time
+            write_queue.put(enhanced_frame)
+            current_frame += 1
+            last_progress_log_time = self._log_pending_progress(
+                current_frame,
+                frame_count,
+                total_start_time,
+                last_progress_log_time
+            )
+
+        return current_frame
+
+    def _submit_frame(self, executor, pending_futures, frame_index, frame):
+        pending_futures[frame_index] = executor.submit(
+            _enhance_frame_worker,
+            frame_index,
+            frame
+        )
+
+    def _drain_completed_frames(self, pending_futures, next_frame_to_write, write_queue, state):
+        current_frame = 0
+
+        while next_frame_to_write in pending_futures:
+            future = pending_futures[next_frame_to_write]
+
+            if not future.done():
+                break
+
+            _, enhanced_frame, enhance_time = future.result()
+            state["enhance_time"] += enhance_time
+            write_queue.put(enhanced_frame)
+            del pending_futures[next_frame_to_write]
+            next_frame_to_write += 1
+            current_frame += 1
+
+        return next_frame_to_write, current_frame
+
+    def _flush_pending_frames(self, pending_futures, next_frame_to_write, write_queue, state):
+        current_frame = 0
+
+        while next_frame_to_write in pending_futures:
+            _, enhanced_frame, enhance_time = pending_futures[next_frame_to_write].result()
+            state["enhance_time"] += enhance_time
+            write_queue.put(enhanced_frame)
+            del pending_futures[next_frame_to_write]
+            next_frame_to_write += 1
+            current_frame += 1
+
+        return current_frame
+
+    def _log_pending_progress(self, current_frame, frame_count, total_start_time, last_progress_log_time):
+        now = time.perf_counter()
+
+        if self._should_log_progress(current_frame, frame_count, now, last_progress_log_time):
+            self._log_progress(current_frame, frame_count, total_start_time, now)
+            return now
+
+        return last_progress_log_time
+
+    def _process_frames(self, read_queue, write_queue, state, frame_count, total_start_time):
+        if not self._should_use_process_pool():
+            return self._process_frames_single_worker(
+                read_queue,
+                write_queue,
+                state,
+                frame_count,
+                total_start_time
+            )
+
+        current_frame = 0
+        next_frame_index = 0
+        next_frame_to_write = 0
+        last_progress_log_time = total_start_time
+        pending_futures = {}
+        max_pending_frames = max(self.queue_size, self.worker_count * 2)
+
+        with self._create_enhancer_pool() as executor:
+            while True:
+                frame = read_queue.get()
+
+                if frame is SENTINEL:
+                    break
+
+                self._validate_worker_state(state)
+                self._submit_frame(executor, pending_futures, next_frame_index, frame)
+                next_frame_index += 1
+
+                if len(pending_futures) >= max_pending_frames:
+                    drained_count = 0
+
+                    while drained_count == 0:
+                        next_frame_to_write, drained_count = self._drain_completed_frames(
+                            pending_futures,
+                            next_frame_to_write,
+                            write_queue,
+                            state
+                        )
+
+                    current_frame += drained_count
+                    last_progress_log_time = self._log_pending_progress(
+                        current_frame,
+                        frame_count,
+                        total_start_time,
+                        last_progress_log_time
+                    )
+
+                next_frame_to_write, drained_count = self._drain_completed_frames(
+                    pending_futures,
+                    next_frame_to_write,
+                    write_queue,
+                    state
+                )
+
+                if drained_count > 0:
+                    current_frame += drained_count
+                    last_progress_log_time = self._log_pending_progress(
+                        current_frame,
+                        frame_count,
+                        total_start_time,
+                        last_progress_log_time
+                    )
+
+            current_frame += self._flush_pending_frames(
+                pending_futures,
+                next_frame_to_write,
+                write_queue,
+                state
+            )
+
+        self._log_pending_progress(
+            current_frame,
+            frame_count,
+            total_start_time,
+            last_progress_log_time
+        )
+        return current_frame
+
     def _log_summary(self, total_start_time, current_frame, state):
         elapsed_time = time.perf_counter() - total_start_time
         average_frame_ms = (
@@ -157,6 +333,12 @@ class VideoProcessor:
 
     def process(self, video_path: str):
         logger.info("Videó megnyitása...")
+        logger.info(
+            "Enhancer mod: %s",
+            f"process-pool ({self.worker_count} worker)"
+            if self._should_use_process_pool()
+            else "single-worker"
+        )
 
         capture = self.video_reader.open(video_path)
         metadata = self._read_video_metadata(capture)
@@ -184,33 +366,14 @@ class VideoProcessor:
             state
         )
 
-        current_frame = 0
-        last_progress_log_time = total_start_time
         frame_count = metadata["frame_count"]
-
-        while True:
-            frame = read_queue.get()
-
-            if frame is SENTINEL:
-                break
-
-            self._validate_worker_state(state)
-
-            enhanced_frame = self._enhance_frame(frame, state)
-
-            write_queue.put(enhanced_frame)
-
-            current_frame += 1
-            now = time.perf_counter()
-
-            if self._should_log_progress(
-                current_frame,
-                frame_count,
-                now,
-                last_progress_log_time
-            ):
-                self._log_progress(current_frame, frame_count, total_start_time, now)
-                last_progress_log_time = now
+        current_frame = self._process_frames(
+            read_queue,
+            write_queue,
+            state,
+            frame_count,
+            total_start_time
+        )
 
         self._finalize_processing(
             capture,
