@@ -1,1 +1,1 @@
-call .venv\Scripts\python.exe -m PyInstaller Main.spec --noconfirm
+call .venv\Scripts\python.exe -m PyInstaller src\videoEnchanter\main.py --noconfirm
