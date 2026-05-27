@@ -134,12 +134,18 @@ class VideoProcessor:
             (current_frame / frame_count) * 100
             if frame_count > 0 else 0.0
         )
+        remaining_frames = max(frame_count - current_frame, 0)
+        remaining_minutes = (
+            (remaining_frames / frames_per_second) / 60
+            if frame_count > 0 and frames_per_second > 0 else 0.0
+        )
         logger.info(
-            "Feldolgozott frame: %s/%s (%.2f%%, %.2f frame/s)",
+            "Feldolgozott frame: %s/%s (%.2f%%, %.2f frame/s, hatra: %.1f perc)",
             current_frame,
             frame_count,
             progress_percent,
-            frames_per_second
+            frames_per_second,
+            remaining_minutes
         )
 
     def _validate_worker_state(self, state):
