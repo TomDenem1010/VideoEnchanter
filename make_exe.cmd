@@ -1,1 +1,1 @@
-call pyinstaller src/videoEnchanter/Main.py
+call .venv\Scripts\python.exe -m PyInstaller Main.spec --noconfirm

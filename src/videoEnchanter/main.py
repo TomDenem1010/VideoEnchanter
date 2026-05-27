@@ -30,7 +30,7 @@ def main():
 
     processor = VideoProcessor(enhancement_profile=enhancement_profile)
     processor.process(video_path)
-
+    input("Folyamat befejezve. Nyomj Entert a kilépéshez...")
 
 if __name__ == "__main__":
     main()

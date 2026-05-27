@@ -1,1 +1,1 @@
-call pip install -r src/videoEnchanter/requirements.txt
+call .venv\Scripts\python.exe -m pip install -r src/videoEnchanter/requirements.txt
