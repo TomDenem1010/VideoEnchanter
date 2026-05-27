@@ -57,30 +57,16 @@ class VideoProcessor:
         except Exception as error:
             state["writer_error"] = error
 
-    def process(self, video_path: str):
-        logger.info("Videó megnyitása...")
+    def _read_video_metadata(self, capture):
+        return {
+            "fps": capture.get(cv2.CAP_PROP_FPS),
+            "width": int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            "frame_count": int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        }
 
-        capture = self.video_reader.open(video_path)
-
-        fps = capture.get(cv2.CAP_PROP_FPS)
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        output_path = buildOutputPath(video_path)
-
-        logger.info(f"Output videó: {output_path}")
-
-        writer = self.video_writer.create(
-            output_path,
-            fps,
-            width,
-            height
-        )
-
-        read_queue = queue.Queue(maxsize=self.queue_size)
-        write_queue = queue.Queue(maxsize=self.queue_size)
-        state = {
+    def _create_processing_state(self):
+        return {
             "read_time": 0.0,
             "enhance_time": 0.0,
             "write_time": 0.0,
@@ -88,6 +74,13 @@ class VideoProcessor:
             "writer_error": None
         }
 
+    def _create_queues(self):
+        return (
+            queue.Queue(maxsize=self.queue_size),
+            queue.Queue(maxsize=self.queue_size)
+        )
+
+    def _start_worker_threads(self, capture, writer, read_queue, write_queue, state):
         reader_thread = threading.Thread(
             target=self._read_frames,
             args=(capture, read_queue, state),
@@ -99,66 +92,53 @@ class VideoProcessor:
             daemon=True
         )
 
-        total_start_time = time.perf_counter()
         reader_thread.start()
         writer_thread.start()
 
-        current_frame = 0
-        progress_interval = 250 if frame_count > 0 else 1
-        progress_log_interval_seconds = 5.0
-        last_progress_log_time = total_start_time
+        return reader_thread, writer_thread
 
-        while True:
-            frame = read_queue.get()
+    def _enhance_frame(self, frame, state):
+        enhance_start_time = time.perf_counter()
+        enhanced_frame = self.frame_enhancer.enhance(frame)
+        state["enhance_time"] += time.perf_counter() - enhance_start_time
+        return enhanced_frame
 
-            if frame is SENTINEL:
-                break
+    def _should_log_progress(self, current_frame, frame_count, now, last_log_time):
+        return (
+            current_frame == frame_count
+            or now - last_log_time >= 5.0
+        )
 
-            if state["reader_error"] is not None:
-                raise state["reader_error"]
+    def _log_progress(self, current_frame, frame_count, total_start_time, now):
+        elapsed_time = now - total_start_time
+        frames_per_second = current_frame / elapsed_time if elapsed_time > 0 else 0.0
+        progress_percent = (
+            (current_frame / frame_count) * 100
+            if frame_count > 0 else 0.0
+        )
+        logger.info(
+            "Feldolgozott frame: %s/%s (%.2f%%, %.2f frame/s)",
+            current_frame,
+            frame_count,
+            progress_percent,
+            frames_per_second
+        )
 
-            enhance_start_time = time.perf_counter()
-            enhanced_frame = self.frame_enhancer.enhance(frame)
-            state["enhance_time"] += time.perf_counter() - enhance_start_time
-
-            write_queue.put(enhanced_frame)
-
-            current_frame += 1
-            now = time.perf_counter()
-
-            if (
-                current_frame == 1
-                or current_frame == frame_count
-                or current_frame % progress_interval == 0
-                or now - last_progress_log_time >= progress_log_interval_seconds
-            ):
-                elapsed_time = now - total_start_time
-                frames_per_second = (
-                    current_frame / elapsed_time
-                    if elapsed_time > 0 else 0.0
-                )
-                logger.info(
-                    "Feldolgozott frame: %s/%s (%.2f%%, %.2f frame/s)",
-                    current_frame,
-                    frame_count,
-                    (current_frame / frame_count) * 100 if frame_count > 0 else 0.0,
-                    frames_per_second
-                )
-                last_progress_log_time = now
-
-        write_queue.put(SENTINEL)
-        reader_thread.join()
-        writer_thread.join()
-
-        capture.release()
-        writer.release()
-
+    def _validate_worker_state(self, state):
         if state["reader_error"] is not None:
             raise state["reader_error"]
 
         if state["writer_error"] is not None:
             raise state["writer_error"]
 
+    def _finalize_processing(self, capture, writer, write_queue, reader_thread, writer_thread):
+        write_queue.put(SENTINEL)
+        reader_thread.join()
+        writer_thread.join()
+        capture.release()
+        writer.release()
+
+    def _log_summary(self, total_start_time, current_frame, state):
         elapsed_time = time.perf_counter() - total_start_time
         average_frame_ms = (
             (elapsed_time / current_frame) * 1000
@@ -174,3 +154,70 @@ class VideoProcessor:
             state["enhance_time"],
             state["write_time"]
         )
+
+    def process(self, video_path: str):
+        logger.info("Videó megnyitása...")
+
+        capture = self.video_reader.open(video_path)
+        metadata = self._read_video_metadata(capture)
+
+        output_path = buildOutputPath(video_path)
+
+        logger.info(f"Output videó: {output_path}")
+
+        writer = self.video_writer.create(
+            output_path,
+            metadata["fps"],
+            metadata["width"],
+            metadata["height"]
+        )
+
+        read_queue, write_queue = self._create_queues()
+        state = self._create_processing_state()
+
+        total_start_time = time.perf_counter()
+        reader_thread, writer_thread = self._start_worker_threads(
+            capture,
+            writer,
+            read_queue,
+            write_queue,
+            state
+        )
+
+        current_frame = 0
+        last_progress_log_time = total_start_time
+        frame_count = metadata["frame_count"]
+
+        while True:
+            frame = read_queue.get()
+
+            if frame is SENTINEL:
+                break
+
+            self._validate_worker_state(state)
+
+            enhanced_frame = self._enhance_frame(frame, state)
+
+            write_queue.put(enhanced_frame)
+
+            current_frame += 1
+            now = time.perf_counter()
+
+            if self._should_log_progress(
+                current_frame,
+                frame_count,
+                now,
+                last_progress_log_time
+            ):
+                self._log_progress(current_frame, frame_count, total_start_time, now)
+                last_progress_log_time = now
+
+        self._finalize_processing(
+            capture,
+            writer,
+            write_queue,
+            reader_thread,
+            writer_thread
+        )
+        self._validate_worker_state(state)
+        self._log_summary(total_start_time, current_frame, state)
