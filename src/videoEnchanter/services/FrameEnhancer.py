@@ -6,14 +6,14 @@ class FrameEnhancer:
     def __init__(self, profile: str = "fast"):
         self.profile = profile
         self.clahe = cv2.createCLAHE(
-            clipLimit=1.8,
+            clipLimit=1.35,
             tileGridSize=(8, 8)
         )
 
     def _resize_for_quality_denoise(self, frame):
         height, width = frame.shape[:2]
-        scaled_width = max(640, width // 2)
-        scaled_height = max(360, height // 2)
+        scaled_width = max(960, width // 2)
+        scaled_height = max(540, height // 2)
 
         if scaled_width >= width or scaled_height >= height:
             return frame, None
@@ -24,14 +24,14 @@ class FrameEnhancer:
 
     def _denoise_quality(self, frame):
         resized_frame, original_size = self._resize_for_quality_denoise(frame)
-        denoised = cv2.fastNlMeansDenoisingColored(
+        denoised = cv2.bilateralFilter(
             resized_frame,
-            None,
-            3,
-            3,
             7,
-            15
+            30,
+            30
         )
+
+        denoised = cv2.GaussianBlur(denoised, (0, 0), 0.35)
 
         if original_size is None:
             return denoised
@@ -46,11 +46,20 @@ class FrameEnhancer:
         return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
 
     def _sharpen(self, frame):
+        if self.profile == "quality":
+            return cv2.addWeighted(
+                frame,
+                1.06,
+                cv2.GaussianBlur(frame, (0, 0), 1.15),
+                -0.06,
+                0
+            )
+
         return cv2.addWeighted(
             frame,
-            1.12,
-            cv2.GaussianBlur(frame, (0, 0), 1.1),
-            -0.12,
+            1.03,
+            cv2.GaussianBlur(frame, (0, 0), 0.9),
+            -0.03,
             0
         )
 
@@ -58,12 +67,7 @@ class FrameEnhancer:
         if self.profile == "quality":
             return self._denoise_quality(frame)
 
-        return cv2.bilateralFilter(
-            frame,
-            3,
-            18,
-            18
-        )
+        return cv2.GaussianBlur(frame, (5, 5), 0.9)
 
     def enhance(self, frame):
         denoised = self._denoise(frame)
