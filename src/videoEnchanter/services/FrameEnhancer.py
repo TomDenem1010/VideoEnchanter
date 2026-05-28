@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 
 
 class FrameEnhancer:
@@ -22,16 +23,39 @@ class FrameEnhancer:
         resized = cv2.resize(frame, denoise_size, interpolation=cv2.INTER_AREA)
         return resized, (width, height)
 
+    def _get_frame_brightness(self, frame):
+        lab_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l_channel, _a_channel, _b_channel = cv2.split(lab_frame)
+        return float(np.mean(l_channel)) / 255.0
+
     def _denoise_quality(self, frame):
         resized_frame, original_size = self._resize_for_quality_denoise(frame)
-        denoised = cv2.bilateralFilter(
-            resized_frame,
-            11,
-            48,
-            48
-        )
+        brightness = self._get_frame_brightness(resized_frame)
 
-        denoised = cv2.GaussianBlur(denoised, (0, 0), 0.65)
+        if brightness >= 0.62:
+            denoised = cv2.bilateralFilter(
+                resized_frame,
+                7,
+                24,
+                24
+            )
+            denoised = cv2.GaussianBlur(denoised, (0, 0), 0.25)
+        elif brightness >= 0.48:
+            denoised = cv2.bilateralFilter(
+                resized_frame,
+                9,
+                34,
+                34
+            )
+            denoised = cv2.GaussianBlur(denoised, (0, 0), 0.4)
+        else:
+            denoised = cv2.bilateralFilter(
+                resized_frame,
+                11,
+                48,
+                48
+            )
+            denoised = cv2.GaussianBlur(denoised, (0, 0), 0.65)
 
         if original_size is None:
             return denoised
@@ -41,17 +65,43 @@ class FrameEnhancer:
     def _adjust_contrast(self, frame):
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l_channel, a_channel, b_channel = cv2.split(lab)
-        l_channel = self.clahe.apply(l_channel)
+
+        if self.profile == "quality":
+            brightness = float(np.mean(l_channel)) / 255.0
+
+            if brightness >= 0.62:
+                clahe = cv2.createCLAHE(clipLimit=1.15, tileGridSize=(8, 8))
+            elif brightness >= 0.48:
+                clahe = cv2.createCLAHE(clipLimit=1.35, tileGridSize=(8, 8))
+            else:
+                clahe = self.clahe
+
+            l_channel = clahe.apply(l_channel)
+        else:
+            l_channel = self.clahe.apply(l_channel)
+
         merged = cv2.merge((l_channel, a_channel, b_channel))
         return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
 
     def _sharpen(self, frame):
         if self.profile == "quality":
+            brightness = self._get_frame_brightness(frame)
+
+            if brightness >= 0.62:
+                amount = 1.07
+                blur_sigma = 1.0
+            elif brightness >= 0.48:
+                amount = 1.09
+                blur_sigma = 1.15
+            else:
+                amount = 1.11
+                blur_sigma = 1.3
+
             return cv2.addWeighted(
                 frame,
-                1.11,
-                cv2.GaussianBlur(frame, (0, 0), 1.3),
-                -0.11,
+                amount,
+                cv2.GaussianBlur(frame, (0, 0), blur_sigma),
+                -(amount - 1.0),
                 0
             )
 
