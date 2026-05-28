@@ -1,7 +1,7 @@
 import argparse
 import logging
 import multiprocessing
-from services.VideoProcessor import VideoProcessor
+from videoEnchanter.services.processor.VideoProcessor import VideoProcessor
 
 
 logging.basicConfig(
@@ -10,6 +10,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
 
 PROFILE_CHOICES = {
     "1": "fast",

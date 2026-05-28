@@ -1,5 +1,5 @@
-from services.FastProcessor import FastProcessor
-from services.QualityProcessor import QualityProcessor
+from videoEnchanter.services.processor.FastProcessor import FastProcessor
+from videoEnchanter.services.processor.QualityProcessor import QualityProcessor
 
 
 class VideoProcessor:

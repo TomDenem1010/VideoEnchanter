@@ -1,0 +1,67 @@
+import cv2
+
+from videoEnchanter.services.frameEnhancer.FrameEnhancer import FrameEnhancer
+
+
+class QualityFrameEnhancer(FrameEnhancer):
+
+    def _denoise_quality(self, frame):
+        resized_frame, original_size = self._resize_for_quality_denoise(frame)
+        brightness = self._get_frame_brightness(resized_frame)
+
+        if brightness >= 0.62:
+            denoised = cv2.bilateralFilter(
+                resized_frame,
+                7,
+                24,
+                24
+            )
+            denoised = cv2.GaussianBlur(denoised, (0, 0), 0.25)
+        elif brightness >= 0.48:
+            denoised = cv2.bilateralFilter(
+                resized_frame,
+                9,
+                34,
+                34
+            )
+            denoised = cv2.GaussianBlur(denoised, (0, 0), 0.4)
+        else:
+            denoised = cv2.bilateralFilter(
+                resized_frame,
+                11,
+                48,
+                48
+            )
+            denoised = cv2.GaussianBlur(denoised, (0, 0), 0.65)
+
+        if original_size is None:
+            return denoised
+
+        return cv2.resize(denoised, original_size, interpolation=cv2.INTER_LINEAR)
+
+    def _adjust_contrast(self, frame):
+        brightness = self._get_frame_brightness(frame)
+
+        if brightness >= 0.62:
+            return self._apply_clahe(frame, 1.15)
+
+        if brightness >= 0.48:
+            return self._apply_clahe(frame, 1.35)
+
+        return self._apply_clahe(frame, 1.55)
+
+    def _sharpen(self, frame):
+        brightness = self._get_frame_brightness(frame)
+
+        if brightness >= 0.62:
+            return self._apply_unsharp_mask(frame, 1.07, 1.0)
+
+        if brightness >= 0.48:
+            return self._apply_unsharp_mask(frame, 1.09, 1.15)
+
+        return self._apply_unsharp_mask(frame, 1.11, 1.3)
+
+    def enhance(self, frame):
+        denoised = self._denoise_quality(frame)
+        contrast = self._adjust_contrast(denoised)
+        return self._sharpen(contrast)

@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['src\\videoEnchanter\\main.py'],
-    pathex=[],
+    pathex=['src'],
     binaries=[],
     datas=[],
     hiddenimports=[],

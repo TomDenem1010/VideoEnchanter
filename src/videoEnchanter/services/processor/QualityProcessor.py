@@ -1,8 +1,8 @@
 import time
 from concurrent.futures import ProcessPoolExecutor
 
-from services.FrameEnhancer import FrameEnhancer
-from services.Processor import Processor, SENTINEL, logger
+from videoEnchanter.services.frameEnhancer.QualityFrameEnhancer import QualityFrameEnhancer
+from videoEnchanter.services.processor.Processor import Processor, SENTINEL, logger
 
 
 ENHANCER = None
@@ -10,7 +10,10 @@ ENHANCER = None
 
 def _init_enhancer_worker(profile):
     global ENHANCER
-    ENHANCER = FrameEnhancer(profile)
+    if profile != "quality":
+        raise ValueError(f"Nem támogatott quality enhancer profile: {profile}")
+
+    ENHANCER = QualityFrameEnhancer()
 
 
 def _enhance_frame_worker(frame_index, frame):
@@ -154,7 +157,7 @@ class QualityProcessor(Processor):
 
     def _process_frames(self, read_queue, write_queue, state, frame_count, total_start_time):
         if self.worker_count <= 1:
-            from services.FastProcessor import FastProcessor
+            from videoEnchanter.services.processor.FastProcessor import FastProcessor
 
             fallback_processor = FastProcessor(queue_size=self.queue_size, worker_count=self.worker_count)
             return fallback_processor._process_frames(

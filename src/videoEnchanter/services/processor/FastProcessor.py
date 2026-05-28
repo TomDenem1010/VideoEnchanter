@@ -1,7 +1,7 @@
 import time
 
-from services.FrameEnhancer import FrameEnhancer
-from services.Processor import Processor, SENTINEL, logger
+from videoEnchanter.services.frameEnhancer.FastFrameEnhancer import FastFrameEnhancer
+from videoEnchanter.services.processor.Processor import Processor, SENTINEL, logger
 
 
 class FastProcessor(Processor):
@@ -22,7 +22,7 @@ class FastProcessor(Processor):
     def _process_frames(self, read_queue, write_queue, state, frame_count, total_start_time):
         current_frame = 0
         last_progress_log_time = total_start_time
-        enhancer = FrameEnhancer(self.enhancement_profile)
+        enhancer = FastFrameEnhancer()
 
         while True:
             frame = read_queue.get()

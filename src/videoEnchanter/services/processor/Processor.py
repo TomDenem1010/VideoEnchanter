@@ -9,10 +9,10 @@ from pathlib import Path
 
 import cv2
 
-from services.AudioMuxer import AudioMuxer
-from services.VideoReader import VideoReader
-from services.VideoWriter import VideoWriter
-from utils.FileUtils import buildOutputPath, buildTemporaryOutputPath
+from videoEnchanter.services.file.AudioMuxer import AudioMuxer
+from videoEnchanter.services.file.VideoReader import VideoReader
+from videoEnchanter.services.file.VideoWriter import VideoWriter
+from videoEnchanter.services.file.FileUtils import buildOutputPath, buildTemporaryOutputPath
 
 
 logger = logging.getLogger(__name__)
