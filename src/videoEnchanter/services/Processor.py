@@ -1,15 +1,18 @@
 import logging
 import os
 import queue
+import shutil
 import threading
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import cv2
 
+from services.AudioMuxer import AudioMuxer
 from services.VideoReader import VideoReader
 from services.VideoWriter import VideoWriter
-from utils.FileUtils import buildOutputPath
+from utils.FileUtils import buildOutputPath, buildTemporaryOutputPath
 
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,7 @@ class Processor(ABC):
     def __init__(self, queue_size: int = 8, worker_count: int | None = None):
         self.queue_size = queue_size
         self.worker_count = worker_count or self._get_default_worker_count()
+        self.audio_muxer = AudioMuxer()
         self.video_reader = VideoReader()
         self.video_writer = VideoWriter()
 
@@ -187,6 +191,25 @@ class Processor(ABC):
             state["write_time"]
         )
 
+    def _finalize_output(self, source_video_path: str, temporary_output_path: str, output_path: str):
+        temporary_file = Path(temporary_output_path)
+
+        if not temporary_file.exists():
+            raise FileNotFoundError(f"Nem található az ideiglenes kimeneti videó: {temporary_output_path}")
+
+        if Path(output_path).exists():
+            Path(output_path).unlink()
+
+        try:
+            self.audio_muxer.merge_audio(
+                source_video_path,
+                temporary_output_path,
+                output_path
+            )
+        finally:
+            if temporary_file.exists() and temporary_file.resolve() != Path(output_path).resolve():
+                temporary_file.unlink()
+
     def _process_video(self, video_path: str):
         logger.info("Videó megnyitása...")
         self._log_processing_mode()
@@ -195,11 +218,12 @@ class Processor(ABC):
         metadata = self._read_video_metadata(capture)
 
         output_path = buildOutputPath(video_path)
+        temporary_output_path = buildTemporaryOutputPath(output_path)
 
         logger.info(f"Output videó: {output_path}")
 
         writer = self.video_writer.create(
-            output_path,
+            temporary_output_path,
             metadata["fps"],
             metadata["width"],
             metadata["height"]
@@ -234,4 +258,5 @@ class Processor(ABC):
             writer_thread
         )
         self._validate_worker_state(state)
+        self._finalize_output(video_path, temporary_output_path, output_path)
         self._log_summary(total_start_time, current_frame, state)

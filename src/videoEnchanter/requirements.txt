@@ -1,3 +1,4 @@
 opencv-python
 numpy
 pyinstaller
+imageio-ffmpeg
