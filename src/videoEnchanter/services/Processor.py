@@ -217,7 +217,7 @@ class Processor(ABC):
         capture = self.video_reader.open(video_path)
         metadata = self._read_video_metadata(capture)
 
-        output_path = buildOutputPath(video_path)
+        output_path = buildOutputPath(video_path, self.enhancement_profile)
         temporary_output_path = buildTemporaryOutputPath(output_path)
 
         logger.info(f"Output videó: {output_path}")
