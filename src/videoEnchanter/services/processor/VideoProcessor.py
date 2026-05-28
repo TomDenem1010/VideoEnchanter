@@ -1,3 +1,4 @@
+from videoEnchanter.constants.Type import FAST
 from videoEnchanter.services.processor.FastProcessor import FastProcessor
 from videoEnchanter.services.processor.QualityProcessor import QualityProcessor
 
@@ -7,7 +8,7 @@ class VideoProcessor:
     def __init__(
         self,
         queue_size: int = 8,
-        enhancement_profile: str = "fast",
+        enhancement_profile: str = FAST,
         worker_count: int | None = None
     ):
         self.enhancement_profile = enhancement_profile

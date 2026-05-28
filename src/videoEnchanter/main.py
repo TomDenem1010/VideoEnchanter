@@ -1,6 +1,7 @@
 import argparse
 import logging
 import multiprocessing
+from videoEnchanter.constants.Type import FAST, QUALITY
 from videoEnchanter.services.processor.VideoProcessor import VideoProcessor
 
 
@@ -13,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 PROFILE_CHOICES = {
-    "1": "fast",
-    "2": "quality",
-    "fast": "fast",
-    "quality": "quality"
+    "1": FAST,
+    "2": QUALITY,
+    FAST: FAST,
+    QUALITY: QUALITY
 }
 
 
@@ -40,12 +41,12 @@ def _resolve_video_path(video_path):
 
 def _resolve_profile(profile):
     if profile:
-        return PROFILE_CHOICES.get(profile.strip().lower(), "fast")
+        return PROFILE_CHOICES.get(profile.strip().lower(), FAST)
 
     profile_input = input(
         "Valaszd ki a profilt [1=fast, 2=quality] (Enter=fast): "
     ).strip().lower()
-    return PROFILE_CHOICES.get(profile_input, "fast")
+    return PROFILE_CHOICES.get(profile_input, FAST)
 
 
 def main():

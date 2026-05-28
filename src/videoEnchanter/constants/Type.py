@@ -1,0 +1,2 @@
+FAST = "fast"
+QUALITY = "quality"

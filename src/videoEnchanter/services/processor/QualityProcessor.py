@@ -1,6 +1,7 @@
 import time
 from concurrent.futures import ProcessPoolExecutor
 
+from videoEnchanter.constants.Type import QUALITY
 from videoEnchanter.services.frameEnhancer.QualityFrameEnhancer import QualityFrameEnhancer
 from videoEnchanter.services.processor.Processor import Processor, SENTINEL, logger
 
@@ -10,7 +11,7 @@ ENHANCER = None
 
 def _init_enhancer_worker(profile):
     global ENHANCER
-    if profile != "quality":
+    if profile != QUALITY:
         raise ValueError(f"Nem támogatott quality enhancer profile: {profile}")
 
     ENHANCER = QualityFrameEnhancer()
@@ -26,7 +27,7 @@ class QualityProcessor(Processor):
 
     @property
     def enhancement_profile(self):
-        return "quality"
+        return QUALITY
 
     def should_process(self, profile: str):
         return profile == self.enhancement_profile

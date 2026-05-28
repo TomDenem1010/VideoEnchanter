@@ -1,5 +1,6 @@
 import time
 
+from videoEnchanter.constants.Type import FAST
 from videoEnchanter.services.frameEnhancer.FastFrameEnhancer import FastFrameEnhancer
 from videoEnchanter.services.processor.Processor import Processor, SENTINEL, logger
 
@@ -8,7 +9,7 @@ class FastProcessor(Processor):
 
     @property
     def enhancement_profile(self):
-        return "fast"
+        return FAST
 
     def should_process(self, profile: str):
         return profile == self.enhancement_profile
