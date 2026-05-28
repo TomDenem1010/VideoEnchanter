@@ -6,7 +6,7 @@ class FrameEnhancer:
     def __init__(self, profile: str = "fast"):
         self.profile = profile
         self.clahe = cv2.createCLAHE(
-            clipLimit=1.35,
+            clipLimit=1.55,
             tileGridSize=(8, 8)
         )
 
@@ -26,12 +26,12 @@ class FrameEnhancer:
         resized_frame, original_size = self._resize_for_quality_denoise(frame)
         denoised = cv2.bilateralFilter(
             resized_frame,
-            7,
-            30,
-            30
+            11,
+            48,
+            48
         )
 
-        denoised = cv2.GaussianBlur(denoised, (0, 0), 0.35)
+        denoised = cv2.GaussianBlur(denoised, (0, 0), 0.65)
 
         if original_size is None:
             return denoised
@@ -49,9 +49,9 @@ class FrameEnhancer:
         if self.profile == "quality":
             return cv2.addWeighted(
                 frame,
-                1.06,
-                cv2.GaussianBlur(frame, (0, 0), 1.15),
-                -0.06,
+                1.11,
+                cv2.GaussianBlur(frame, (0, 0), 1.3),
+                -0.11,
                 0
             )
 
