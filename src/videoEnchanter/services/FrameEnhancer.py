@@ -58,14 +58,6 @@ class FrameEnhancer:
         if self.profile == "quality":
             return self._denoise_quality(frame)
 
-        if self.profile == "balanced":
-            return cv2.bilateralFilter(
-                frame,
-                5,
-                28,
-                28
-            )
-
         return cv2.bilateralFilter(
             frame,
             3,

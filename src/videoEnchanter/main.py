@@ -13,10 +13,8 @@ logger = logging.getLogger(__name__)
 
 PROFILE_CHOICES = {
     "1": "fast",
-    "2": "balanced",
-    "3": "quality",
+    "2": "quality",
     "fast": "fast",
-    "balanced": "balanced",
     "quality": "quality"
 }
 
@@ -44,7 +42,7 @@ def _resolve_profile(profile):
         return PROFILE_CHOICES.get(profile.strip().lower(), "fast")
 
     profile_input = input(
-        "Valaszd ki a profilt [1=fast, 2=balanced, 3=quality] (Enter=fast): "
+        "Valaszd ki a profilt [1=fast, 2=quality] (Enter=fast): "
     ).strip().lower()
     return PROFILE_CHOICES.get(profile_input, "fast")
 
